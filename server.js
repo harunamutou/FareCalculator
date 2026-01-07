@@ -2,6 +2,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import bodyParser from "body-parser";
+import fs from "fs";
 
 const app = express();
 app.use(bodyParser.json());
@@ -15,9 +16,7 @@ const DISCORD_SEARCH_LOG = "https://discord.com/api/webhooks/1458559479531573383
 const DISCORD_ADDLINE_LOG = "https://discord.com/api/webhooks/1458559343065829377/9pf_8WeNhGb9XzVoMJTmoj9YTy7-imKELnzFxMTayIv_hUTlM-gA19_3eGMYKdOEO6w5";
 const DISCORD_ERROR_LOG = "https://discord.com/api/webhooks/1458547135472467998/2Ces9SugoRXoJgyC-WavJ3tmNmLy90Z5xIhvBLWcwkN_LZnRjLfxsTf5dOR3eHOX8lMO";
 
-// スプレッドシートID
-const SPREADSHEET_ID = "1i1nrENJPUUUt5oxmJHmgglK04kpZrscp";
-
+// サーバー内駅データ（JSONファイルに永続化可能）
 let stationData = [];
 
 // Discord Webhook送信
@@ -33,42 +32,29 @@ async function sendDiscordLog(webhook, content) {
   }
 }
 
-// 非同期でエラー送信（Promise 無視）
 function logErrorToDiscord(message) {
   sendDiscordLog(DISCORD_ERROR_LOG, message).catch(e => console.error("Discord送信失敗:", e));
 }
 
-// スプレッドシートから駅データ取得
-async function loadStations() {
-  try {
-    const url = `https://script.google.com/macros/s/${SPREADSHEET_ID}/exec?action=getStations`;
-    const res = await fetch(url);
-    const data = await res.json();
-    // 駅名トリム + distance 数値化
-    stationData = data.map(s => ({
-      line: s.line.trim(),
-      station: s.station.trim(),
-      distance: Number(s.distance)
-    }));
-    await sendDiscordLog(DISCORD_ACCESS_LOG, `駅データロード完了: ${stationData.length}件`);
-    console.log(`駅データロード完了: ${stationData.length}件`);
-  } catch (err) {
-    logErrorToDiscord(`loadStationsエラー: ${err.message}`);
-    console.error(err);
-  }
+// 駅追加
+function addStation(line, station, distance) {
+  const exists = stationData.find(s => s.station === station.trim());
+  if (exists) return false; // すでにある
+  stationData.push({line: line.trim(), station: station.trim(), distance: Number(distance)});
+  sendDiscordLog(DISCORD_ADDLINE_LOG, `駅追加: ${station} (${line}, ${distance}km)`);
+  return true;
 }
 
 // 経路検索
 function searchRoute(start, end, via = []) {
   try {
     const path = [start, ...via.filter(Boolean), end];
-
     let totalDistance = 0;
 
     for (let i = 0; i < path.length - 1; i++) {
       const from = stationData.find(s => s.station === path[i].trim());
       const to   = stationData.find(s => s.station === path[i + 1].trim());
-      if (!from || !to) throw new Error(`駅データ不足: ${path[i]} → ${path[i+1]}`);
+      if (!from || !to) throw new Error(`駅データ不足: ${path[i]} → ${path[i + 1]}`);
       totalDistance += Math.abs(to.distance - from.distance);
     }
 
@@ -119,6 +105,11 @@ app.get("/", (req, res) => {
       <button onclick="search()">検索</button>
       <h3>結果</h3>
       <pre id="result">ここに結果が表示されます</pre>
+      <h3>駅追加（テスト用）</h3>
+      <input id="line" placeholder="路線名">
+      <input id="station" placeholder="駅名">
+      <input id="distance" placeholder="距離(km)">
+      <button onclick="addStationUI()">追加</button>
     </div>
     <script>
       async function search() {
@@ -135,6 +126,19 @@ app.get("/", (req, res) => {
         const data = await res.json();
         document.getElementById("result").textContent = JSON.stringify(data,null,2);
       }
+
+      async function addStationUI() {
+        const line = document.getElementById("line").value.trim();
+        const station = document.getElementById("station").value.trim();
+        const distance = document.getElementById("distance").value.trim();
+        const res = await fetch("/addStation", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({line, station, distance})
+        });
+        const data = await res.json();
+        alert(JSON.stringify(data));
+      }
     </script>
   </body>
   </html>
@@ -149,14 +153,13 @@ app.post("/search", async (req, res) => {
   res.json(result);
 });
 
-// データ再読み込み
-app.post("/reload", async (req, res) => {
-  await loadStations();
-  res.json({status:"reloaded", count:stationData.length});
+// 駅追加 API (DiscordボットまたはUI)
+app.post("/addStation", (req, res) => {
+  const {line, station, distance} = req.body;
+  if (!line || !station || !distance) return res.json({error: "line, station, distance 必須"});
+  const added = addStation(line, station, distance);
+  res.json({added, station, line, distance});
 });
-
-// 起動時に駅データロード
-loadStations();
 
 // サーバー起動
 app.listen(PORT, ()=>console.log(`Server running on port ${PORT}`));
