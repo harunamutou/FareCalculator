@@ -1,15 +1,18 @@
 {
-  "name": "transfer-search-server",
+  "name": "transfer-search-app",
   "version": "1.0.0",
-  "main": "server.js",
+  "description": "乗り換え検索アプリ（Discord連携版）",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server/server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "node-fetch": "^3.3.2",
     "body-parser": "^1.20.2",
-    "dotenv": "^16.3.1"
-  }
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
 }
