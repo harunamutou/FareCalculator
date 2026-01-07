@@ -10,14 +10,17 @@ app.use(express.static("public"));
 const PORT = process.env.PORT || 3000;
 
 // Discord Webhook
-const DISCORD_SEARCH_LOG = "https://discord.com/api/webhooks/1458559479531573383/clnGsN1RzEesGLtsYWRApXlKxBY1ON5vuSVT9nJUxIPrs5bka8ADZPKxGT4K5isUIfdY";
-const DISCORD_ADDLINE_LOG = "https://discord.com/api/webhooks/1458559343065829377/9pf_8WeNhGb9XzVoMJTmoj9YTy7-imKELnzFxMTayIv_hUTlM-gA19_3eGMYKdOEO6w5";
-const DISCORD_ERROR_LOG = "https://discord.com/api/webhooks/1458547135472467998/2Ces9SugoRXoJgyC-WavJ3tmNmLy90Z5xIhvBLWcwkN_LZnRjLfxsTf5dOR3eHOX8lMO";
+const DISCORD_SEARCH_LOG = process.env.DISCORD_SEARCH_LOG;
+const DISCORD_ADDLINE_LOG = process.env.DISCORD_ADDLINE_LOG;
+const DISCORD_ERROR_LOG = process.env.DISCORD_ERROR_LOG;
+
+// 簡易認証トークン（Discord Bot と一致させる）
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 // 駅データ
 let stationData = [];
 
-// Discord送信用
+// Discord送信関数
 async function sendDiscordLog(webhook, content) {
   try {
     await fetch(webhook, {
@@ -31,10 +34,10 @@ async function sendDiscordLog(webhook, content) {
 }
 
 function logErrorToDiscord(message) {
-  sendDiscordLog(DISCORD_ERROR_LOG, message).catch(e => console.error("Discord送信失敗:", e));
+  sendDiscordLog(DISCORD_ERROR_LOG, message);
 }
 
-// 駅追加（Discord専用）
+// 駅追加
 function addStation(line, station, distance) {
   const exists = stationData.find(s => s.station === station.trim());
   if (exists) return false;
@@ -96,14 +99,13 @@ app.post("/search", async (req,res)=>{
   res.json(result);
 });
 
-// 駅追加 API（Discord専用）
-app.post("/addStationDiscord",(req,res)=>{
+// Discord専用 駅追加 API
+app.post("/addStationDiscord", (req,res)=>{
   const {line,station,distance,token} = req.body;
-  // 任意の簡易認証
-  if(token !== process.env.DISCORD_TOKEN){ 
+  if(token !== DISCORD_TOKEN){
     return res.status(403).json({error:"認証失敗"});
   }
-  const added=addStation(line,station,distance);
+  const added = addStation(line,station,distance);
   res.json({added,station,line,distance});
 });
 
