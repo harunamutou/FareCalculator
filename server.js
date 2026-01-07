@@ -14,7 +14,7 @@ const DISCORD_SEARCH_LOG = "https://discord.com/api/webhooks/1458559479531573383
 const DISCORD_ADDLINE_LOG = "https://discord.com/api/webhooks/1458559343065829377/9pf_8WeNhGb9XzVoMJTmoj9YTy7-imKELnzFxMTayIv_hUTlM-gA19_3eGMYKdOEO6w5";
 const DISCORD_ERROR_LOG = "https://discord.com/api/webhooks/1458547135472467998/2Ces9SugoRXoJgyC-WavJ3tmNmLy90Z5xIhvBLWcwkN_LZnRjLfxsTf5dOR3eHOX8lMO";
 
-// 駅データ初期は空
+// 駅データ
 let stationData = [];
 
 // Discord送信用
@@ -34,7 +34,7 @@ function logErrorToDiscord(message) {
   sendDiscordLog(DISCORD_ERROR_LOG, message).catch(e => console.error("Discord送信失敗:", e));
 }
 
-// 駅追加
+// 駅追加（Discord専用）
 function addStation(line, station, distance) {
   const exists = stationData.find(s => s.station === station.trim());
   if (exists) return false;
@@ -64,90 +64,28 @@ function searchRoute(start, end, via = []) {
   }
 }
 
-// JR本州三社風運賃表（距離 km → 基本運賃）
+// 運賃表
 const fareTable = [
-  {maxDistance: 1, fare: 140}, {maxDistance: 3, fare: 190}, {maxDistance: 10, fare: 200},
-  {maxDistance: 15, fare: 240}, {maxDistance: 20, fare: 330},
-  {maxDistance: 25, fare: 420}, {maxDistance: 30, fare: 510}, {maxDistance: 35, fare: 590},
-  {maxDistance: 40, fare: 680}, {maxDistance: 45, fare: 770}, {maxDistance: 50, fare: 860},
-  {maxDistance: 60, fare: 990}, {maxDistance: 70, fare: 1170}, {maxDistance: 80, fare: 1340},
-  {maxDistance: 90, fare: 1520}, {maxDistance: 100, fare: 1690}, {maxDistance: 120, fare: 1980},
-  {maxDistance: 140, fare: 2310}, {maxDistance: 160, fare: 2640},
+  {maxDistance: 1, fare: 140}, {maxDistance: 3, fare: 200}, {maxDistance: 6, fare: 230},
+  {maxDistance: 10, fare: 280}, {maxDistance: 15, fare: 330}, {maxDistance: 20, fare: 380},
+  {maxDistance: 25, fare: 430}, {maxDistance: 30, fare: 480}, {maxDistance: 35, fare: 530},
+  {maxDistance: 40, fare: 580}, {maxDistance: 45, fare: 630}, {maxDistance: 50, fare: 680},
+  {maxDistance: 55, fare: 730}, {maxDistance: 60, fare: 780}, {maxDistance: 65, fare: 830},
+  {maxDistance: 70, fare: 880}, {maxDistance: 75, fare: 930}, {maxDistance: 80, fare: 980},
+  {maxDistance: 85, fare: 1030}, {maxDistance: 90, fare: 1080},
 ];
 
-// 運賃計算
 function calculateFare(distance) {
   for (let i = 0; i < fareTable.length; i++) {
     if (distance <= fareTable[i].maxDistance) return fareTable[i].fare;
   }
-  // 上限超過分は10kmごとに50円加算
   const lastFare = fareTable[fareTable.length - 1].fare;
   return lastFare + Math.ceil((distance - fareTable[fareTable.length - 1].maxDistance) / 10) * 50;
 }
 
 // ---------------- UI ----------------
 app.get("/", (req, res) => {
-  res.send(`<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>経路検索アプリ</title>
-<style>
-body{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;background:#f0f2f5;display:flex;justify-content:center;padding:50px;}
-.container{width:420px;background:#fff;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);padding:25px;}
-input{width:100%;padding:10px;margin:6px 0;border-radius:6px;border:1px solid #ccc;}
-button{width:100%;padding:12px;border:none;border-radius:6px;background:#007BFF;color:white;font-weight:bold;cursor:pointer;margin:8px 0;}
-button:hover{background:#0056b3;}
-.card{background:#fefefe;border-radius:8px;padding:15px;margin:10px 0;box-shadow:0 2px 10px rgba(0,0,0,0.08);}
-.card p{margin:4px 0;}
-.distance{color:#1E90FF;font-weight:bold;}
-.fare{color:#28a745;font-weight:bold;}
-</style>
-</head>
-<body>
-<div class="container">
-<h2>経路検索</h2>
-<input id="start" placeholder="出発駅">
-<input id="end" placeholder="到着駅">
-<input id="via1" placeholder="経由駅1 (任意)">
-<input id="via2" placeholder="経由駅2 (任意)">
-<input id="via3" placeholder="経由駅3 (任意)">
-<button onclick="search()">検索</button>
-<div id="result"></div>
-<h3>駅追加（テスト用）</h3>
-<input id="line" placeholder="路線名">
-<input id="station" placeholder="駅名">
-<input id="distance" placeholder="距離(km)">
-<button onclick="addStationUI()">追加</button>
-</div>
-<script>
-async function search() {
-  const start=document.getElementById("start").value.trim();
-  const end=document.getElementById("end").value.trim();
-  const via=[document.getElementById("via1").value,
-             document.getElementById("via2").value,
-             document.getElementById("via3").value].filter(Boolean);
-  const res=await fetch("/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({start,end,via})});
-  const data=await res.json();
-  const resultDiv=document.getElementById("result");
-  if(data.error){
-    resultDiv.innerHTML='<div class="card" style="color:red;">エラー: '+data.error+'</div>';
-  }else{
-    resultDiv.innerHTML='<div class="card"><p><strong>経路:</strong> '+data.path.join(" → ")+'</p><p><strong>総距離:</strong> <span class="distance">'+data.distance.toFixed(2)+' km</span></p><p><strong>運賃:</strong> <span class="fare">¥'+data.fare.toLocaleString()+'</span></p></div>';
-  }
-}
-async function addStationUI() {
-  const line=document.getElementById("line").value.trim();
-  const station=document.getElementById("station").value.trim();
-  const distance=document.getElementById("distance").value.trim();
-  if(!line||!station||!distance){alert("line, station, distance は必須です");return;}
-  const res=await fetch("/addStation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({line,station,distance})});
-  const data=await res.json();
-  alert(JSON.stringify(data));
-}
-</script>
-</body>
-</html>`);
+  res.sendFile("index.html", {root: "public"});
 });
 
 // 経路検索 API
@@ -158,9 +96,13 @@ app.post("/search", async (req,res)=>{
   res.json(result);
 });
 
-// 駅追加 API
-app.post("/addStation",(req,res)=>{
-  const {line,station,distance}=req.body;
+// 駅追加 API（Discord専用）
+app.post("/addStationDiscord",(req,res)=>{
+  const {line,station,distance,token} = req.body;
+  // 任意の簡易認証
+  if(token !== process.env.DISCORD_TOKEN){ 
+    return res.status(403).json({error:"認証失敗"});
+  }
   const added=addStation(line,station,distance);
   res.json({added,station,line,distance});
 });
