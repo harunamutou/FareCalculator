@@ -33,6 +33,11 @@ async function sendDiscordLog(webhook, content) {
   }
 }
 
+// 非同期でエラー送信（Promise 無視）
+function logErrorToDiscord(message) {
+  sendDiscordLog(DISCORD_ERROR_LOG, message).catch(e => console.error("Discord送信失敗:", e));
+}
+
 // スプレッドシートから駅データ取得
 async function loadStations() {
   try {
@@ -48,7 +53,7 @@ async function loadStations() {
     await sendDiscordLog(DISCORD_ACCESS_LOG, `駅データロード完了: ${stationData.length}件`);
     console.log(`駅データロード完了: ${stationData.length}件`);
   } catch (err) {
-    await sendDiscordLog(DISCORD_ERROR_LOG, `loadStationsエラー: ${err.message}`);
+    logErrorToDiscord(`loadStationsエラー: ${err.message}`);
     console.error(err);
   }
 }
@@ -70,7 +75,7 @@ function searchRoute(start, end, via = []) {
     const fare = calculateFare(totalDistance);
     return { path, distance: totalDistance, fare };
   } catch (err) {
-    sendDiscordLog(DISCORD_ERROR_LOG, `searchRouteエラー: ${err.message}`);
+    logErrorToDiscord(`searchRouteエラー: ${err.message}`);
     return { error: err.message };
   }
 }
