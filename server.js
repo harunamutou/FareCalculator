@@ -16,22 +16,9 @@ const DISCORD_ERROR_LOG = "https://discord.com/api/webhooks/1458547135472467998/
 
 // スプレッドシートIDとシート名
 const SPREADSHEET_ID = "1i1nrENJPUUUt5oxmJHmgglK04kpZrscp";
-const SHEET_NAME = "stations"; // 適宜変更
+const SHEET_NAME = "stations";
 
 let stationData = []; // {line, station, distance}
-
-// GAS API 経由でスプレッドシートを取得
-async function loadStations() {
-  try {
-    const url = `https://script.google.com/macros/s/${SPREADSHEET_ID}/exec?action=getStations`;
-    const res = await fetch(url);
-    stationData = await res.json();
-    await sendDiscordLog(DISCORD_ACCESS_LOG, `駅データロード完了: ${stationData.length}件`);
-  } catch (err) {
-    await sendDiscordLog(DISCORD_ERROR_LOG, `loadStationsエラー: ${err.message}`);
-    console.error(err);
-  }
-}
 
 // Discord Webhookに送信
 async function sendDiscordLog(webhook, content) {
@@ -46,7 +33,20 @@ async function sendDiscordLog(webhook, content) {
   }
 }
 
-// 経路探索（出発 → 経由駅 → 到着）
+// GAS API 経由でスプレッドシート取得
+async function loadStations() {
+  try {
+    const url = `https://script.google.com/macros/s/${SPREADSHEET_ID}/exec?action=getStations`;
+    const res = await fetch(url);
+    stationData = await res.json();
+    await sendDiscordLog(DISCORD_ACCESS_LOG, `駅データロード完了: ${stationData.length}件`);
+  } catch (err) {
+    await sendDiscordLog(DISCORD_ERROR_LOG, `loadStationsエラー: ${err.message}`);
+    console.error(err);
+  }
+}
+
+// 経路検索
 function searchRoute(start, end, via = []) {
   try {
     const path = [start, ...via.filter(Boolean), end];
@@ -54,13 +54,12 @@ function searchRoute(start, end, via = []) {
 
     for (let i = 0; i < path.length - 1; i++) {
       const from = stationData.find(s => s.station === path[i]);
-      const to = stationData.find(s => s.station === path[i+1]);
+      const to = stationData.find(s => s.station === path[i + 1]);
       if (!from || !to) throw new Error(`駅データ不足: ${path[i]} → ${path[i+1]}`);
       totalDistance += Math.abs(to.distance - from.distance);
     }
 
     const fare = calculateFare(totalDistance);
-
     return {path, distance: totalDistance, fare};
   } catch (err) {
     sendDiscordLog(DISCORD_ERROR_LOG, `searchRouteエラー: ${err.message}`);
@@ -68,24 +67,31 @@ function searchRoute(start, end, via = []) {
   }
 }
 
-// JR本州三社運賃（簡易計算）
+// JR本州三社運賃簡易計算
 function calculateFare(distance) {
   if (distance <= 1) return 140;
   if (distance <= 3) return 200;
   if (distance <= 6) return 230;
   if (distance <= 10) return 280;
-  return 280 + Math.floor((distance - 10) / 10) * 50; // 距離に応じた増加
+  return 280 + Math.floor((distance - 10) / 10) * 50;
 }
 
-// 経路検索API
+// ---------------- API ----------------
+
+// GET / で動作確認用
+app.get("/", (req, res) => {
+  res.send("Server is running! Use /search POST API to query routes.");
+});
+
+// 経路検索
 app.post("/search", async (req, res) => {
   const {start, end, via} = req.body;
-  const result = searchRoute(start, end, via);
-  await sendDiscordLog(DISCORD_SEARCH_LOG, `検索: ${start} → ${end} 経由: ${via.join(", ")} 結果: ${JSON.stringify(result)}`);
+  const result = searchRoute(start, end, via || []);
+  await sendDiscordLog(DISCORD_SEARCH_LOG, `検索: ${start} → ${end} 経由: ${via?.join(",") || "-"} 結果: ${JSON.stringify(result)}`);
   res.json(result);
 });
 
-// 路線追加API
+// 路線追加
 app.post("/addline", async (req, res) => {
   const {line} = req.body;
   try {
@@ -103,7 +109,7 @@ app.post("/addline", async (req, res) => {
   }
 });
 
-// 駅追加API
+// 駅追加
 app.post("/addstation", async (req, res) => {
   const {line, station, distance} = req.body;
   try {
@@ -121,17 +127,16 @@ app.post("/addstation", async (req, res) => {
   }
 });
 
-// データ再読み込みAPI
+// データ再読み込み
 app.post("/reload", async (req, res) => {
   await loadStations();
   res.json({status: "reloaded", count: stationData.length});
 });
 
-// 起動時に駅データ読み込み
+// 起動時に駅データロード
 loadStations();
 
+// サーバー起動
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-app.get("/", (req, res) => {
-  res.send("Server is running! Use /search API to query routes.");
 });
