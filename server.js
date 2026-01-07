@@ -2,7 +2,6 @@
 import express from "express";
 import fetch from "node-fetch";
 import bodyParser from "body-parser";
-import fs from "fs";
 
 const app = express();
 app.use(bodyParser.json());
@@ -11,12 +10,11 @@ app.use(express.static("public")); // HTML/JS 配信用
 const PORT = process.env.PORT || 3000;
 
 // Discord Webhook
-const DISCORD_ACCESS_LOG = "https://discord.com/api/webhooks/1458546755468660982/YTlFt_XZIhm4k01U8LLdF2wEAk2VYCmQH--BMmENQKEMg1fXh0W0eJDH1mE88g_Z7Jf";
 const DISCORD_SEARCH_LOG = "https://discord.com/api/webhooks/1458559479531573383/clnGsN1RzEesGLtsYWRApXlKxBY1ON5vuSVT9nJUxIPrs5bka8ADZPKxGT4K5isUIfdY";
 const DISCORD_ADDLINE_LOG = "https://discord.com/api/webhooks/1458559343065829377/9pf_8WeNhGb9XzVoMJTmoj9YTy7-imKELnzFxMTayIv_hUTlM-gA19_3eGMYKdOEO6w5";
 const DISCORD_ERROR_LOG = "https://discord.com/api/webhooks/1458547135472467998/2Ces9SugoRXoJgyC-WavJ3tmNmLy90Z5xIhvBLWcwkN_LZnRjLfxsTf5dOR3eHOX8lMO";
 
-// サーバー内駅データ（JSONファイルに永続化可能）
+// サーバー内駅データ（初期は空）
 let stationData = [];
 
 // Discord Webhook送信
@@ -77,7 +75,7 @@ function calculateFare(distance) {
 
 // ---------------- API ----------------
 
-// ブラウザ用UI
+// ブラウザUI
 app.get("/", (req, res) => {
   res.send(`
   <!DOCTYPE html>
@@ -86,12 +84,15 @@ app.get("/", (req, res) => {
     <meta charset="UTF-8">
     <title>経路検索アプリ</title>
     <style>
-      body { font-family: sans-serif; background:#f7f7f7; display:flex; flex-direction:column; align-items:center; padding:50px; }
-      .container { background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.1); width:400px; }
-      input { width:100%; padding:8px; margin:5px 0; border-radius:4px; border:1px solid #ccc; }
-      button { padding:10px 20px; border:none; border-radius:4px; background:#4CAF50; color:white; cursor:pointer; }
-      button:hover { background:#45a049; }
-      pre { background:#eee; padding:10px; border-radius:4px; overflow:auto; }
+      body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background:#f0f2f5; display:flex; justify-content:center; padding:50px; }
+      .container { width:420px; background:#fff; border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,0.1); padding:25px; }
+      input { width:100%; padding:10px; margin:6px 0; border-radius:6px; border:1px solid #ccc; }
+      button { width:100%; padding:12px; border:none; border-radius:6px; background:#007BFF; color:white; font-weight:bold; cursor:pointer; margin:8px 0; }
+      button:hover { background:#0056b3; }
+      .card { background:#fefefe; border-radius:8px; padding:15px; margin:10px 0; box-shadow:0 2px 10px rgba(0,0,0,0.08); }
+      .card p { margin:4px 0; }
+      .distance { color:#1E90FF; font-weight:bold; }
+      .fare { color:#28a745; font-weight:bold; }
     </style>
   </head>
   <body>
@@ -103,14 +104,15 @@ app.get("/", (req, res) => {
       <input id="via2" placeholder="経由駅2 (任意)">
       <input id="via3" placeholder="経由駅3 (任意)">
       <button onclick="search()">検索</button>
-      <h3>結果</h3>
-      <pre id="result">ここに結果が表示されます</pre>
+      <div id="result"></div>
+
       <h3>駅追加（テスト用）</h3>
       <input id="line" placeholder="路線名">
       <input id="station" placeholder="駅名">
       <input id="distance" placeholder="距離(km)">
       <button onclick="addStationUI()">追加</button>
     </div>
+
     <script>
       async function search() {
         const start = document.getElementById("start").value.trim();
@@ -118,19 +120,36 @@ app.get("/", (req, res) => {
         const via = [document.getElementById("via1").value,
                      document.getElementById("via2").value,
                      document.getElementById("via3").value].filter(Boolean);
+
         const res = await fetch("/search", {
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({start,end,via})
         });
         const data = await res.json();
-        document.getElementById("result").textContent = JSON.stringify(data,null,2);
+        const resultDiv = document.getElementById("result");
+
+        if(data.error){
+          resultDiv.innerHTML = `<div class="card" style="color:red;">エラー: ${data.error}</div>`;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="card">
+              <p><strong>経路:</strong> ${data.path.join(" → ")}</p>
+              <p><strong>総距離:</strong> <span class="distance">${data.distance.toFixed(2)} km</span></p>
+              <p><strong>運賃:</strong> <span class="fare">¥${data.fare.toLocaleString()}</span></p>
+            </div>
+          `;
+        }
       }
 
       async function addStationUI() {
         const line = document.getElementById("line").value.trim();
         const station = document.getElementById("station").value.trim();
         const distance = document.getElementById("distance").value.trim();
+        if(!line || !station || !distance){
+          alert("line, station, distance は必須です");
+          return;
+        }
         const res = await fetch("/addStation", {
           method:"POST",
           headers:{"Content-Type":"application/json"},
@@ -153,12 +172,18 @@ app.post("/search", async (req, res) => {
   res.json(result);
 });
 
-// 駅追加 API (DiscordボットまたはUI)
+// 駅追加 API
 app.post("/addStation", (req, res) => {
   const {line, station, distance} = req.body;
-  if (!line || !station || !distance) return res.json({error: "line, station, distance 必須"});
   const added = addStation(line, station, distance);
   res.json({added, station, line, distance});
+});
+
+// データリセット API
+app.post("/resetStations", (req, res) => {
+  stationData = [];
+  sendDiscordLog(DISCORD_ADDLINE_LOG, "駅データを完全リセットしました");
+  res.json({message:"駅データを完全リセットしました"});
 });
 
 // サーバー起動
