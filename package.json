@@ -1,16 +1,32 @@
 {
-  "name": "FareCalculator",
+  "name": "fare-calculator",
   "version": "1.0.0",
-  "description": "DiscordBOT + Web APIでJR運賃検索・追加ができる本番用運賃計算機",
+  "description": "Discord BOT + Web API for JR fare calculation",
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js & node bot/index.js"
+    "start": "node server/index.js & node bot/index.js",
+    "start:web": "node server/index.js",
+    "start:bot": "node bot/index.js",
+    "test": "echo \"No test specified\" && exit 0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
-    "discord.js": "^14.12.0",
     "express": "^4.18.2",
     "pg": "^8.11.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "body-parser": "^1.20.2"
-  }
+    "discord.js": "^14.12.1",
+    "yarn": "^1.22.22"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "fare",
+    "calculation",
+    "jr"
+  ],
+  "author": "HarunaMutou",
+  "license": "MIT"
 }
