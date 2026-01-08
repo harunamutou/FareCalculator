@@ -1,6 +1,4 @@
 # transfer-search-app
-# Transfer Search App
-
 ## 概要
 架空路線の乗換検索アプリ。駅データはDiscord経由で追加可能。結果はDiscordログにも出力。
 
